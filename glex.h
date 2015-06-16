@@ -106,7 +106,7 @@
  *      #define to 1 to enable parsing C-style integer and float
  *      suffixes (f, L, U, UL, etc.)
  *
- * GENLEX_CONFIG_FLOATS         (NOT IMPLEMENTED)
+ * GENLEX_CONFIG_FLOATS
  *
  *      #define to 1 to enable parsing floating point numbers.
  *
@@ -117,24 +117,24 @@
  * GENLEX_CONFIG_SINGLE_QUOTE_STRING            (NOT IMPLEMENTED)
  *
  *      #define to 1 to enable parsing single-quote strings.  Otherwise,
- *      single-quotes assume a single character or an escape
+ *      single-quotes assume a single character or a single escape
  *      character sequence.
  *
  * GENLEX_CONFIG_TRIPLE_QUOTED_STRING           (NOT IMPLEMENTED)
  *
  *      #define to 1 to enable parsing triple-quoted multi-line strings
  *
- * GENLEX_COMMENT_TOKEN         (NOT IMPLEMENTED)
+ * GENLEX_COMMENT_TOKEN
  *
  *      Token returned by lexer to indicate a comment. Required if
  *      GENLEX_COMMENT_PAIRS is defined.
  *
- * GENLEX_FLOAT_TOKEN           (NOT IMPLEMENTED)
+ * GENLEX_FLOAT_TOKEN
  *
  *      Token returned by lexer to indicate a floating point number.
  *      Required if GENLEX_CONFIG_REALS is defined to a non-zero value.
  *
- * GENLEX_FLOAT_T               (NOT IMPLEMENTED)
+ * GENLEX_FLOAT_T
  *
  *      Real (floating point) type used in lexer.  If not defined,
  *      defaults to double.
