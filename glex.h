@@ -76,6 +76,13 @@
  *
  * Optional configuration options:
  *
+ * GENLEX_COMMENT_PAIRS
+ *
+ *   A list of strings that delimit comments.  Examples are shown below.
+ *   If not comment pairs are specified, then no comments are parsed.
+ *   Comments are returned as whole strings by the lexer, and can either
+ *   be used or discarded.
+ *
  * GENLEX_IS_WHITESPACE(ch)
  *
  *      Must return a non-zero number if the character is a whitespace
@@ -116,6 +123,11 @@
  * GENLEX_CONFIG_TRIPLE_QUOTED_STRING           (NOT IMPLEMENTED)
  *
  *      #define to 1 to enable parsing triple-quoted multi-line strings
+ *
+ * GENLEX_COMMENT_TOKEN         (NOT IMPLEMENTED)
+ *
+ *      Token returned by lexer to indicate a comment. Required if
+ *      GENLEX_COMMENT_PAIRS is defined.
  *
  * GENLEX_FLOAT_TOKEN           (NOT IMPLEMENTED)
  *
@@ -170,6 +182,10 @@
 #  error GENLEX_KEYWORDS must be defined
 #endif
 
+#if defined(GENLEX_COMMENT_PAIRS) && !defined(GENLEX_COMMENT_TOKEN)
+#  error GENLEX_COMMENT_TOKEN must be defined when GENLEX_COMMENT_PAIRS is defined
+#endif 
+
 #if GENLEX_CONFIG_FLOATS
 #  if !defined(GENLEX_FLOAT_T)
 #    define GENLEX_FLOAT_T double
@@ -222,8 +238,34 @@ struct gen_lexer_keyword {
   int token;
 };
 
+/* Currently comment pairs are restricted to two character to keep our
+ * look-ahead buffer only one character.  This handles many common
+ * comment pairs.
+ */
+struct gen_lexer_comment_pairs {
+  const unsigned char beg[2]; /* string that delimits the beginning of a comment */
+  const unsigned char end[2]; /* string that delimits the end of a comment */
+  /* TODO: optionally enable nested comments */
+};
+
+/* Some common comment pairs as examples: */
+
+/* C90 pairs of (slash-star, star-slash) */
+#define GENLEX_C90_COMMENTS { { "/*", "*/" } }
+
+/* C99/C++ also includes (slash-slash, EOL) */
+#define GENLEX_C99_COMMENTS { { "/*", "*/" }, { "//", "\n" } }
+
+/* sh/ksh/bash use (pound,EOL) */
+#define GENLEX_SH_COMMENTS  { { "#", "\n" } }
+
 static const unsigned char gen_lexer_literals[GENLEX_NUM_LITERALS] = GENLEX_LITERALS;
 static const struct gen_lexer_keyword gen_lexer_keywords[] = GENLEX_KEYWORDS;
+
+#if defined(GENLEX_COMMENT_PAIRS)
+static const struct gen_lexer_comment_pairs gen_lexer_comments[] = GENLEX_COMMENT_PAIRS;
+#define GENLEX_NUM_COMMENT_PAIRS  (sizeof(gen_lexer_comments)/sizeof(gen_lexer_comments[0]))
+#endif
 
 #define GENLEX_NUM_KEYWORDS  (sizeof(gen_lexer_keywords)/sizeof(gen_lexer_keywords[0]))
 
@@ -533,6 +575,39 @@ static int gen_lexer_read_symbol(struct gen_lexer *lexer, int c)
   return tok;
 }
 
+#if defined(GENLEX_COMMENT_PAIRS)
+static int gen_lexer_read_comment(struct gen_lexer *lexer, const unsigned char end[2])
+{
+
+  for(;;) {
+    int c, next;
+    c = GENLEX_GETC(lexer->ctx);
+
+    if (c == EOF) {
+      return GENLEX_ERR_UNEXPECTED_EOF;
+    }
+
+    if (c != end[0]) {
+      GENLEXER_BUF_ADD(lexer,c);
+      continue;
+    }
+
+    if (!end[1]) {
+      return GENLEX_COMMENT_TOKEN;
+    }
+
+    next = GENLEX_GETC(lexer->ctx);
+    if (next == end[1]) {
+      return GENLEX_COMMENT_TOKEN;
+    }
+
+    GENLEXER_BUF_ADD(lexer,c);
+    GENLEXER_BUF_ADD(lexer,next);
+  }
+}
+#endif
+
+
 static int gen_lexer_next_token(struct gen_lexer *lexer)
 {
   int ch;
@@ -542,6 +617,28 @@ static int gen_lexer_next_token(struct gen_lexer *lexer)
   ch = genlex_skip_ws(lexer);
 
   if (ch == EOF) { return 0; }
+
+#if defined(GENLEX_COMMENT_PAIRS)
+  {
+    int i;
+    for (i=0; i < GENLEX_NUM_COMMENT_PAIRS; i++) {
+      int next;
+      if (ch != gen_lexer_comments[i].beg[0]) { continue; }
+
+      if (!gen_lexer_comments[i].beg[1]) {
+        return gen_lexer_read_comment(lexer, gen_lexer_comments[i].end);
+      }
+
+      next = GENLEX_GETC(lexer->ctx);
+      if (next != gen_lexer_comments[i].beg[1]) {
+        GENLEX_UNGETC(next,lexer->ctx);
+        continue;
+      }
+
+      return gen_lexer_read_comment(lexer, gen_lexer_comments[i].end);
+    }
+  }
+#endif
 
   if (ch == '"') {
     return gen_lexer_read_string(lexer);

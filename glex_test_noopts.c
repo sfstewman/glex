@@ -14,18 +14,22 @@
 #define GENLEX_IS_SYMBOL(ch,pos)  (isalpha(ch) || ((ch) == '_') || (((pos)>0) && isnumber(ch)))
 #define GENLEX_LITERALS "()=;+-*/"
 
-#define GENLEX_ID_TOKEN     1024
-#define GENLEX_STRING_TOKEN 1025
-#define GENLEX_INT_TOKEN    1026
+#define GENLEX_ID_TOKEN      1024
+#define GENLEX_STRING_TOKEN  1025
+#define GENLEX_INT_TOKEN     1026
+#define GENLEX_COMMENT_TOKEN 1027
 
-#define KW_IF    1027
-#define KW_WHILE 1028
+#define KW_IF    1028
+#define KW_WHILE 1029
 
 #define GENLEX_KEYWORDS { \
   { "if"   , KW_IF    }, \
   { "while", KW_WHILE }, \
 }
 
+/* We do configure one option: comments. */
+#define GENLEX_COMMENT_PAIRS GENLEX_C99_COMMENTS
+ 
 #include "glex.h"
 
 DEFTEST( bytestreamd_getc_and_ungetc )
@@ -255,6 +259,74 @@ DEFTEST( returns_int )
   EXPECT( 0, gen_lexer_next_token(&lexer) );
 }
 
+DEFTEST( comments )
+{
+  struct gen_lexer lexer;
+  struct bytestream s = BYTESTREAM(
+      " 32 + /* yes */ 15 - 5 * (3 + 2); // this\n"
+      "foo(9);\n"
+      "x = \"bar /* not a comment */\";\n"
+      );
+
+  gen_lexer_initialize(&lexer, &s);
+
+  EXPECT( GENLEX_INT_TOKEN, gen_lexer_next_token(&lexer) );
+  EXPECT( 32, gen_lexer_token_int_value(&lexer) );
+
+  EXPECT( '+', gen_lexer_next_token(&lexer) );
+
+  EXPECT( GENLEX_COMMENT_TOKEN, gen_lexer_next_token(&lexer) );
+  EXPECT_STR( " yes ", gen_lexer_token_string(&lexer, NULL) );
+
+  EXPECT( GENLEX_INT_TOKEN, gen_lexer_next_token(&lexer) );
+  EXPECT( 15, gen_lexer_token_int_value(&lexer) );
+
+  EXPECT( '-', gen_lexer_next_token(&lexer) );
+
+  EXPECT( GENLEX_INT_TOKEN, gen_lexer_next_token(&lexer) );
+  EXPECT( 5, gen_lexer_token_int_value(&lexer) );
+
+  EXPECT( '*', gen_lexer_next_token(&lexer) );
+  EXPECT( '(', gen_lexer_next_token(&lexer) );
+
+  EXPECT( GENLEX_INT_TOKEN, gen_lexer_next_token(&lexer) );
+  EXPECT( 3, gen_lexer_token_int_value(&lexer) );
+
+  EXPECT( '+', gen_lexer_next_token(&lexer) );
+
+  EXPECT( GENLEX_INT_TOKEN, gen_lexer_next_token(&lexer) );
+  EXPECT( 2, gen_lexer_token_int_value(&lexer) );
+
+  EXPECT( ')', gen_lexer_next_token(&lexer) );
+  EXPECT( ';', gen_lexer_next_token(&lexer) );
+
+  EXPECT( GENLEX_COMMENT_TOKEN, gen_lexer_next_token(&lexer) );
+  EXPECT_STR( " this", gen_lexer_token_string(&lexer, NULL) );
+
+  EXPECT( GENLEX_ID_TOKEN, gen_lexer_next_token(&lexer) );
+  EXPECT_STR( "foo", gen_lexer_token_string(&lexer,NULL) );
+
+  EXPECT( '(', gen_lexer_next_token(&lexer) );
+
+  EXPECT( GENLEX_INT_TOKEN, gen_lexer_next_token(&lexer) );
+  EXPECT( 9, gen_lexer_token_int_value(&lexer) );
+
+  EXPECT( ')', gen_lexer_next_token(&lexer) );
+  EXPECT( ';', gen_lexer_next_token(&lexer) );
+
+  EXPECT( GENLEX_ID_TOKEN, gen_lexer_next_token(&lexer) );
+  EXPECT_STR( "x", gen_lexer_token_string(&lexer,NULL) );
+
+  EXPECT( '=', gen_lexer_next_token(&lexer) );
+
+  EXPECT( GENLEX_STRING_TOKEN, gen_lexer_next_token(&lexer) );
+  EXPECT_STR( "bar /* not a comment */", gen_lexer_token_string(&lexer,NULL) );
+
+  EXPECT( ';', gen_lexer_next_token(&lexer) );
+
+  EXPECT( 0, gen_lexer_next_token(&lexer) );
+}
+
 void run_all_tests_noopts(void)
 {
   RUNTEST( bytestreamd_getc_and_ungetc );
@@ -271,6 +343,7 @@ void run_all_tests_noopts(void)
   RUNTEST( returns_int );
 
   RUNTEST( returns_literals );
+  RUNTEST( comments );
 }
 
 
