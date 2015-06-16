@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <ctype.h>
 
+#define GLEX_TEST_BYTESTREAM 1
 #include "glex_tests.h"
 
 #define GENLEX_GETC(ctx) (bytestream_getc(ctx))

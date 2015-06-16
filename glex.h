@@ -94,19 +94,14 @@
  *
  *      #define to 1 to enable parsing hexadecimal numbers.
  *
- * GENLEX_CONFIG_C_SUFFIX         (NOT IMPLEMENTED)
- *
- *      #define to 1 to enable parsing C-style integer suffixes (L, U,
- *      UL, etc.)
- *
- * GENLEX_CONFIG_C_SUFFIX         (NOT IMPLEMENTED)
+ * GENLEX_CONFIG_C_SUFFIX       (NOT IMPLEMENTED)
  *
  *      #define to 1 to enable parsing C-style integer and float
  *      suffixes (f, L, U, UL, etc.)
  *
- * GENLEX_CONFIG_REALS          (NOT IMPLEMENTED)
+ * GENLEX_CONFIG_FLOATS         (NOT IMPLEMENTED)
  *
- *      #define to 1 to enable parsing reals.
+ *      #define to 1 to enable parsing floating point numbers.
  *
  * GENLEX_CONFIG_MULTILINE_STRING               (NOT IMPLEMENTED)
  *
@@ -122,10 +117,10 @@
  *
  *      #define to 1 to enable parsing triple-quoted multi-line strings
  *
- * GENLEX_REAL_TOKEN            (NOT IMPLEMENTED)
+ * GENLEX_FLOAT_TOKEN           (NOT IMPLEMENTED)
  *
- *      Real (floating point) token returned by lexer.  Required if
- *      GENLEX_CONFIG_REALS is defined to a non-zero value.
+ *      Token returned by lexer to indicate a floating point number.
+ *      Required if GENLEX_CONFIG_REALS is defined to a non-zero value.
  *
  * GENLEX_FLOAT_T               (NOT IMPLEMENTED)
  *
@@ -175,6 +170,15 @@
 #  error GENLEX_KEYWORDS must be defined
 #endif
 
+#if GENLEX_CONFIG_FLOATS
+#  if !defined(GENLEX_FLOAT_T)
+#    define GENLEX_FLOAT_T double
+#  endif
+#  if !defined(GENLEX_FLOAT_TOKEN)
+#    error GENLEX_FLOAT_TOKEN must be defined
+#  endif
+#endif
+
 /* Default configuration options if not already defined */
 #if !defined(GENLEX_INT_T)
 #  define GENLEX_INT_T int
@@ -194,8 +198,10 @@ enum gen_lexer_errors {
   GENLEX_ERR_UNEXPECTED_EOL      = -4,
   GENLEX_ERR_UNRECOGNIZED_ESCAPE = -5,
   GENLEX_ERR_INTEGER_OVERFLOW    = -6,
-  GENLEX_ERR_INVALID_INTEGER     = -7,
+  GENLEX_ERR_FLOAT_OVERFLOW      = -7,
+  GENLEX_ERR_INVALID_INTEGER     = -8,
   GENLEX_ERR_UNKNOWN_ERROR     = -100,
+  GENLEX_ERR_INVALID_STATE     = -101,
   GENLEX_ERR_UNIMPLEMENTED    = -1000,  /* FIXME: should be removed after development */
 };
 
@@ -205,7 +211,9 @@ struct gen_lexer {
   unsigned char buf[GENLEX_STRING_MAX];
   union {
     GENLEX_INT_T i;
-    /* TODO: optional floating point */
+#if GENLEX_CONFIG_FLOATS
+    GENLEX_FLOAT_T f;
+#endif
   } tval;
 };
 
@@ -230,7 +238,9 @@ static int gen_lexer_next_token(struct gen_lexer *lexer);
 static const unsigned char *gen_lexer_token_string(struct gen_lexer *lexer, size_t *lenp);
 static GENLEX_INT_T gen_lexer_token_int_value(struct gen_lexer *lexer);
 
-/* TODO: float_value */
+#if GENLEX_CONFIG_FLOATS
+static GENLEX_FLOAT_T gen_lexer_token_float_value(struct gen_lexer *lexer);
+#endif
 
 
 /* Implementation */
@@ -263,6 +273,16 @@ static int gen_lexer_buf_add(struct gen_lexer *lexer, int ch)
   lexer->buf[lexer->blen++] = ch;
   return 1;
 }
+
+/* Shortcut macro that includes return-on-error behavior.
+ *
+ * This is mainly meant to do the default error handling that's almost
+ * always done when using gen_lexer_buf_add
+ */
+#define GENLEXER_BUF_ADD(lx, c) do { \
+  if (!gen_lexer_buf_add((lx),(c))) { \
+    return GENLEX_ERR_BUFFER_OVERFLOW; \
+  } } while(0)
 
 static int gen_lexer_next_char_escaped(struct gen_lexer *lexer)
 {
@@ -312,9 +332,7 @@ static int gen_lexer_read_string(struct gen_lexer *lexer)
       if (c < 0) { return c; } /* error code */
     }
 
-    if (!gen_lexer_buf_add(lexer, c)) {
-      return GENLEX_ERR_BUFFER_OVERFLOW;
-    }
+    GENLEXER_BUF_ADD(lexer,c);
   }
 }
 
@@ -328,9 +346,7 @@ static int gen_lexer_read_char(struct gen_lexer *lexer)
     if (c < 0) { return c; } /* error code */
   }
 
-  if (!gen_lexer_buf_add(lexer, c)) {
-    return GENLEX_ERR_BUFFER_OVERFLOW;
-  }
+  GENLEXER_BUF_ADD(lexer,c);
 
   lexer->tval.i = c;
 
@@ -353,16 +369,47 @@ static int gen_lexer_read_num(struct gen_lexer *lexer, int c)
   GENLEX_INT_T lval;
   const char *s;
   char *end;
+  int isfloat;
 
   /* TODO: optional hexidecimal and octal support */
-  /* TODO: optional floating point support */
 
+  isfloat = 0;
   do {
-    if (!gen_lexer_buf_add(lexer, c)) {
-      return GENLEX_ERR_BUFFER_OVERFLOW;
-    }
+    GENLEXER_BUF_ADD(lexer,c);
+
     c = GENLEX_GETC(lexer->ctx);
   } while (isnumber(c));
+
+#if GENLEX_CONFIG_FLOATS
+  /* check for decimal */
+  if (c == '.') {
+    isfloat = 1;
+    do {
+      GENLEXER_BUF_ADD(lexer,c);
+      c = GENLEX_GETC(lexer->ctx);
+    } while (isnumber(c));
+  }
+
+  /* check for exponent */
+  if ((c == 'e') || (c=='E')) {
+    isfloat = 1;
+    GENLEXER_BUF_ADD(lexer,c);
+    c = GENLEX_GETC(lexer->ctx);
+    if ((c == '-') || (c == '+')) {
+      GENLEXER_BUF_ADD(lexer,c);
+      c = GENLEX_GETC(lexer->ctx);
+    }
+
+    if (!isnumber(c)) {
+      return GENLEX_ERR_INVALID_CHAR;
+    }
+
+    do {
+      GENLEXER_BUF_ADD(lexer,c);
+      c = GENLEX_GETC(lexer->ctx);
+    } while (isnumber(c));
+  }
+#endif
 
   if (c != EOF) {
     if (GENLEX_IS_SYMBOL(c,0)) {
@@ -372,14 +419,52 @@ static int gen_lexer_read_num(struct gen_lexer *lexer, int c)
     GENLEX_UNGETC(c,lexer->ctx);
   }
 
+  errno = 0;
+  s = (const char*)gen_lexer_token_string(lexer,NULL);
+
+  if (isfloat) {
+#if GENLEX_CONFIG_FLOATS
+    GENLEX_FLOAT_T fvalue;
+
+#if   GENLEX_FLOAT_T == float
+    fvalue = strtof(s, &end);
+#elif GENLEX_FLOAT_T == double
+    fvalue = strtod(s, &end);
+#else
+    /* unknown, so default to long double */
+    fvalue = strtold(s, &end);
+#endif
+  /* The lexer only invokes this routine when there's numeric input, so
+   * *s should never be '\0', and we can just check if *end is not '\0'
+   */
+  if (*end != '\0') {
+    return GENLEX_ERR_INVALID_INTEGER;
+  }
+
+  if (errno == ERANGE) {
+    return GENLEX_ERR_FLOAT_OVERFLOW;
+  }
+
+  if (errno != 0) {
+    return GENLEX_ERR_UNKNOWN_ERROR;
+  }
+
+  lexer->tval.f = fvalue;
+
+  return GENLEX_FLOAT_TOKEN;
+
+#else
+  /* this should never be reached! */
+  return GENLEX_ERR_INVALID_STATE;
+#endif /* GENLEX_CONFIG_FLOATS */
+  }
+
   /* TODO: optional suffix type support */
 
   /* FIXME: use a fixed base 10 for now since we don't officially
    * support hex or octal
    */
   /* use gen_lexer_token_string() because it null-terminates the buffer */
-  errno = 0;
-  s = (const char*)gen_lexer_token_string(lexer,NULL);
   value = strtol(s, &end, 10);
 
   /* The lexer only invokes this routine when there's numeric input, so
@@ -498,6 +583,13 @@ static GENLEX_INT_T gen_lexer_token_int_value(struct gen_lexer *lexer)
 {
   return lexer->tval.i;
 }
+
+#if GENLEX_CONFIG_FLOATS
+static GENLEX_FLOAT_T gen_lexer_token_float_value(struct gen_lexer *lexer)
+{
+  return lexer->tval.f;
+}
+#endif
 
 #endif /* GLEX_H */
 

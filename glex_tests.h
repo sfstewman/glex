@@ -2,7 +2,9 @@
 #define GLEX_TESTS_H
 
 #include <stdio.h>
+#include <math.h>
 
+#if GLEX_TEST_BYTESTREAM
 struct bytestream {
   size_t loc;
   size_t len;
@@ -23,14 +25,24 @@ static int bytestream_ungetc(int c, struct bytestream *ctx)
   if (ctx->loc > 0) { ctx->loc--; }
   return 0;
 }
+#endif /* GLEX_TEST_BYTESTREAM */
 
 extern int glex_test_failures;
+extern int glex_test_numtests;
 
 #define EXPECT( val, expr ) do { \
   int expt_val = (val); int expt_act = (expr); \
   if (expt_val != expt_act) { \
     fprintf(stderr, "[%s:%d] EXPECT FAILED in %s\n" \
         "  expected %d from %s\n  actual %d from %s\n", \
+        __FILE__, __LINE__, __func__, expt_val, #val, expt_act, #expr); \
+    glex_test_failures++; return; } } while (0)
+
+#define EXPECT_DBL( val, expr, tol ) do { \
+  double expt_val = (val); double expt_act = (expr); \
+  if (fabs(expt_val - expt_act) > (tol)) { \
+    fprintf(stderr, "[%s:%d] EXPECT FAILED in %s\n" \
+        "  expected %f from %s\n  actual %f from %s\n", \
         __FILE__, __LINE__, __func__, expt_val, #val, expt_act, #expr); \
     glex_test_failures++; return; } } while (0)
 
@@ -43,7 +55,13 @@ extern int glex_test_failures;
         __FILE__, __LINE__, __func__, expt_val, #val, expt_act, #expr); \
     glex_test_failures++; return; } } while (0)
 
-#define DEFTEST( name ) static void test_ ## name (void)
+#define DEFTEST( name ) \
+  static void test_ ## name ## _run(void); \
+  static void test_ ## name (void) { \
+    glex_test_numtests++; test_ ## name ## _run(); \
+  } \
+  static void test_ ## name ## _run(void)
+
 #define RUNTEST( name ) test_ ## name ()
 
 
