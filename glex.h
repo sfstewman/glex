@@ -374,29 +374,39 @@ static int gen_lexer_read_string(struct gen_lexer *lexer)
 {
   /* TODO: add optional three-quote string support */
   /* TODO: add optional single-quote string support */
+  int err = 0;
 
   for(;;) {
     int c = GENLEX_GETC(lexer->ctx);
 
     if (c == EOF) {
-      return GENLEX_ERR_UNEXPECTED_EOF;
+      if (!err) { err = GENLEX_ERR_UNEXPECTED_EOF; }
+      return err;
     }
 
     /* TODO: add optional multiline string support */
     if (c == '\n') {
-      return GENLEX_ERR_UNEXPECTED_EOL;
+      if (!err) { err = GENLEX_ERR_UNEXPECTED_EOL; }
+      return err;
     }
 
     if (c == '"') {
-      return GENLEX_STRING_TOKEN;
+      if (!err) { return GENLEX_STRING_TOKEN; }
+      return err;
     }
 
     if (c == '\\') {
       c = gen_lexer_next_char_escaped(lexer);
-      if (c < 0) { return c; } /* error code */
+      if (c < 0) { /* error code */
+        if (!err) { err = c; }
+        return err;
+      }
     }
 
-    GENLEXER_BUF_ADD(lexer,c);
+    if (!gen_lexer_buf_add(lexer,c)) {
+      if (!err) { err = GENLEX_ERR_BUFFER_OVERFLOW; }
+      /* continue processing to consume string, if possible */
+    }
   }
 }
 
@@ -578,9 +588,12 @@ static int gen_lexer_read_symbol(struct gen_lexer *lexer, int c)
 {
   int tok;
 
+  tok = 0;
   do {
-    if (!gen_lexer_buf_add(lexer, c)) {
-      return GENLEX_ERR_BUFFER_OVERFLOW;
+    if (tok == 0) {
+      if (!gen_lexer_buf_add(lexer, c)) {
+        tok = GENLEX_ERR_BUFFER_OVERFLOW;
+      }
     }
 
     c = GENLEX_GETC(lexer->ctx);
@@ -588,6 +601,10 @@ static int gen_lexer_read_symbol(struct gen_lexer *lexer, int c)
 
   if (c != EOF) {
     GENLEX_UNGETC(c, lexer->ctx);
+  }
+
+  if (tok != 0) {
+    return tok; /* error code */
   }
 
   /* TODO: implement optional trie-table search */

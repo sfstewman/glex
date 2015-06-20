@@ -372,6 +372,37 @@ DEFTEST( comments )
   EXPECT( 0, gen_lexer_next_token(&lexer) );
 }
 
+DEFTEST( lexer_buffer_overflow_has_graceful_recovery )
+{
+  struct gen_lexer lexer;
+  struct bytestream s = BYTESTREAM(
+      "\"This is a long string that will overflow the small "
+      "sixty-four character buffer of the lexer but hopefully we can recover\"\n"
+      "medium_identifier_is_fine();\n"
+      "this_is_a_long_identifier_name_that_will_also_overflow_the_sixty_four_character_buffer_"
+      "because_we_never_learned_to_be_succinct_when_naming_things();"
+      );
+
+  gen_lexer_initialize(&lexer, &s);
+
+  EXPECT( GENLEX_ERR_BUFFER_OVERFLOW, gen_lexer_next_token(&lexer) );
+
+  EXPECT( GENLEX_ID_TOKEN, gen_lexer_next_token(&lexer) );
+  EXPECT_STR( "medium_identifier_is_fine", gen_lexer_token_string(&lexer,NULL) );
+
+  EXPECT( '(', gen_lexer_next_token(&lexer) );
+  EXPECT( ')', gen_lexer_next_token(&lexer) );
+  EXPECT( ';', gen_lexer_next_token(&lexer) );
+
+  EXPECT( GENLEX_ERR_BUFFER_OVERFLOW, gen_lexer_next_token(&lexer) );
+
+  EXPECT( '(', gen_lexer_next_token(&lexer) );
+  EXPECT( ')', gen_lexer_next_token(&lexer) );
+  EXPECT( ';', gen_lexer_next_token(&lexer) );
+
+  EXPECT( 0, gen_lexer_next_token(&lexer) );
+}
+
 void run_all_tests_noopts(void)
 {
   RUNTEST( bytestreamd_getc_and_ungetc );
@@ -390,6 +421,8 @@ void run_all_tests_noopts(void)
   RUNTEST( returns_literal_pairs );
   RUNTEST( returns_literals );
   RUNTEST( comments );
+
+  RUNTEST( lexer_buffer_overflow_has_graceful_recovery );
 }
 
 
