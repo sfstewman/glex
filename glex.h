@@ -3,11 +3,52 @@
 
 /* GenLexer: General lexer for parsing things with C-like strings and
  * escape characters, numbers (integers and, optionally, reals),
- * keywords and identifiers, and single literal characters.
+ * keywords and identifiers, single literal characters, and pairs of
+ * literal characters.
  *
  * This covers many C-like languages, domain-specific languages, and
  * markup languages, like JSON and TOML, that all basically have the
  * same definitions of whitespace, strings, numbers, and keywords.
+ *
+ * This is meant to be #include'd into a .c file after #define'ing
+ * various options, detailed below.  All functions are declared with
+ * static (file-scope) linkage, so multiple lexers can be compiled into
+ * the same executable, if desired.
+ *
+ * The lexer API consists of just a few functions:
+ *
+ *   static int gen_lexer_initialize(struct gen_lexer *lexer, GENLEX_IO_T ctx);
+ *   
+ *     Initializes the lexer structure.  Note that the lexer does no
+ *     dynamic memory allocation, and the user can tune the size of its
+ *     internal buffer.
+ *
+ *   static int gen_lexer_next_token(struct gen_lexer *lexer);
+ *
+ *     Scans and returns the next lexical token.
+ *
+ *   static const unsigned char *gen_lexer_token_string(struct gen_lexer *lexer, size_t *lenp);
+ *
+ *     Null-terminates and returns a pointer to the lexer's internal
+ *     buffer.  This gives the text corresponding to the current lexical
+ *     token.
+ *
+ *     NB: that this buffer will be overwritten the next time
+ *     gen_lexer_next_token() is called, so any strings that need to be
+ *     kept around must be copied.
+ *
+ *   static GENLEX_INT_T gen_lexer_token_int_value(struct gen_lexer *lexer);
+ *
+ *     If the lexical token is GENLEX_INT_TOKEN, this will return the
+ *     integer represented by that token.  Otherwise, the value is
+ *     unspecified.
+ *
+ *   static GENLEX_FLOAT_T gen_lexer_token_float_value(struct gen_lexer *lexer);
+ *
+ *     (Only present if GENLEX_CONFIG_FLOATS is defined)
+ *     If the lexical token is GENLEX_FLT_TOKEN, this will return the
+ *     float represented by that token.  Otherwise, the value is
+ *     unspecified.
  */
 
 /* Required I/O definitions:
@@ -48,11 +89,11 @@
  *      tokens: "(){}[],;" returns each of these characters as a literal
  *      token.
  *
- * GENLEX_LITERAL_PAIRS         (NOT IMPLEMENTED)
+ * GENLEX_LITERAL_PAIRS
  *
- *      A list of literal pairs: two symbols that should be returned as
- *      a literal token.  If defined, these are evaluated before
- *      GENLEX_LITERALS.
+ *      A list of literal pairs: two characters that, when read
+ *      sequentially, should be returned as a token.  If defined, these
+ *      are evaluated before GENLEX_LITERALS.
  *
  *      The purpose of this is to allow ">=" and "==" to be returned as
  *      single tokens while allowing '>' and '=' to be in the literal
