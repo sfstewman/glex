@@ -44,7 +44,19 @@
  *
  * GENLEX_LITERALS
  *
- *      Character string of literal characters like '(', ')', ';', etc.
+ *      A string of characters that should be returned as literal
+ *      tokens: "(){}[],;" returns each of these characters as a literal
+ *      token.
+ *
+ * GENLEX_LITERAL_PAIRS         (NOT IMPLEMENTED)
+ *
+ *      A list of literal pairs: two symbols that should be returned as
+ *      a literal token.  If defined, these are evaluated before
+ *      GENLEX_LITERALS.
+ *
+ *      The purpose of this is to allow ">=" and "==" to be returned as
+ *      single tokens while allowing '>' and '=' to be in the literal
+ *      string.
  *
  * GENLEX_STRING_MAX
  *
@@ -238,6 +250,11 @@ struct gen_lexer_keyword {
   int token;
 };
 
+struct gen_lexer_literal_pair {
+  const unsigned char pair[2];
+  int token;
+};
+
 /* Currently comment pairs are restricted to two character to keep our
  * look-ahead buffer only one character.  This handles many common
  * comment pairs.
@@ -265,6 +282,11 @@ static const struct gen_lexer_keyword gen_lexer_keywords[] = GENLEX_KEYWORDS;
 #if defined(GENLEX_COMMENT_PAIRS)
 static const struct gen_lexer_comment_pairs gen_lexer_comments[] = GENLEX_COMMENT_PAIRS;
 #define GENLEX_NUM_COMMENT_PAIRS  (sizeof(gen_lexer_comments)/sizeof(gen_lexer_comments[0]))
+#endif
+
+#if defined(GENLEX_LITERAL_PAIRS)
+static const struct gen_lexer_literal_pair gen_lexer_literal_pairs[] = GENLEX_LITERAL_PAIRS;
+#define GENLEX_NUM_LITERAL_PAIRS  (sizeof(gen_lexer_literal_pairs)/sizeof(gen_lexer_literal_pairs[0]))
 #endif
 
 #define GENLEX_NUM_KEYWORDS  (sizeof(gen_lexer_keywords)/sizeof(gen_lexer_keywords[0]))
@@ -649,9 +671,27 @@ static int gen_lexer_next_token(struct gen_lexer *lexer)
     return gen_lexer_read_char(lexer);
   }
 
-  /* check for literals before numbers so '-' can be returned as a
-   * literal symbol, or otherwised used to parse a number
+  /* check for literals and literal pairs before numbers so '-' can be
+   * returned as a literal symbol, or otherwised used to parse a number
    */
+#if defined(GENLEX_LITERAL_PAIRS)
+  {
+    int i, c2;
+    c2 = GENLEX_GETC(lexer->ctx);
+    if (c2 != EOF) {
+      for (i=0; i < GENLEX_NUM_LITERAL_PAIRS; i++) {
+        if ((gen_lexer_literal_pairs[i].pair[0] == ch) &&
+            (gen_lexer_literal_pairs[i].pair[1] == c2)) {
+          GENLEXER_BUF_ADD(lexer,ch);
+          GENLEXER_BUF_ADD(lexer,c2);
+          return gen_lexer_literal_pairs[i].token;
+        }
+      }
+      GENLEX_UNGETC(c2, lexer->ctx);
+    }
+  }
+#endif
+
   lit = memchr(gen_lexer_literals, ch, sizeof(gen_lexer_literals));
   if (lit && *lit) { return ch; }
 

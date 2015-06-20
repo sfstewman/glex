@@ -22,6 +22,12 @@
 #define KW_IF    1028
 #define KW_WHILE 1029
 
+#define LIT_EQ 512
+
+#define GENLEX_LITERAL_PAIRS { \
+  { "==", LIT_EQ },            \
+}
+
 #define GENLEX_KEYWORDS { \
   { "if"   , KW_IF    }, \
   { "while", KW_WHILE }, \
@@ -161,6 +167,45 @@ DEFTEST( returns_char )
   /* " 'c'  '\n'  \"foo\" 'c '" */
   /*                          ^ */
   EXPECT( GENLEX_ERR_UNEXPECTED_EOF, gen_lexer_next_token(&lexer) );
+
+  EXPECT( 0, gen_lexer_next_token(&lexer) );
+}
+
+DEFTEST( returns_literal_pairs )
+{
+  struct bytestream s = BYTESTREAM( " a = ( 32 == 15 - (-17) );" );
+  struct gen_lexer lexer;
+
+  gen_lexer_initialize(&lexer, &s);
+
+  EXPECT( GENLEX_ID_TOKEN, gen_lexer_next_token(&lexer) );
+  EXPECT_STR( "a", gen_lexer_token_string(&lexer,NULL) );
+
+  EXPECT( '=', gen_lexer_next_token(&lexer) );
+
+  EXPECT( '(', gen_lexer_next_token(&lexer) );
+  {
+    EXPECT( GENLEX_INT_TOKEN, gen_lexer_next_token(&lexer) );
+    EXPECT( 32, gen_lexer_token_int_value(&lexer) );
+
+    EXPECT( LIT_EQ, gen_lexer_next_token(&lexer) );
+    EXPECT_STR( "==", gen_lexer_token_string(&lexer,NULL) );
+
+    EXPECT( GENLEX_INT_TOKEN, gen_lexer_next_token(&lexer) );
+    EXPECT( 15, gen_lexer_token_int_value(&lexer) );
+
+    EXPECT( '-', gen_lexer_next_token(&lexer) );
+
+    EXPECT( '(', gen_lexer_next_token(&lexer) );
+    {
+      EXPECT( '-', gen_lexer_next_token(&lexer) );
+      EXPECT( GENLEX_INT_TOKEN, gen_lexer_next_token(&lexer) );
+      EXPECT( 17, gen_lexer_token_int_value(&lexer) );
+    }
+    EXPECT( ')', gen_lexer_next_token(&lexer) );
+  }
+  EXPECT( ')', gen_lexer_next_token(&lexer) );
+  EXPECT( ';', gen_lexer_next_token(&lexer) );
 
   EXPECT( 0, gen_lexer_next_token(&lexer) );
 }
@@ -342,6 +387,7 @@ void run_all_tests_noopts(void)
   RUNTEST( returns_char   );
   RUNTEST( returns_int );
 
+  RUNTEST( returns_literal_pairs );
   RUNTEST( returns_literals );
   RUNTEST( comments );
 }
