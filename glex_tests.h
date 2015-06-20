@@ -56,13 +56,13 @@ extern int glex_test_numtests;
     glex_test_failures++; return; } } while (0)
 
 #define DEFTEST( name ) \
-  static void test_ ## name ## _run(void); \
-  static void test_ ## name (void) { \
-    glex_test_numtests++; test_ ## name ## _run(); \
+  static void test_ ## name (void); \
+  static void test_ ## name ## _run (void) { \
+    glex_test_numtests++; test_ ## name (); \
   } \
-  static void test_ ## name ## _run(void)
+  static void test_ ## name (void)
 
-#define RUNTEST( name ) test_ ## name ()
+#define RUNTEST( name ) test_ ## name ## _run()
 
 
 
