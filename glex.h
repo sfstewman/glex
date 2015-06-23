@@ -615,9 +615,10 @@ static int gen_lexer_read_num(struct gen_lexer *lexer, int c)
 
 static int gen_lexer_lookup_keyword(struct gen_lexer *lexer)
 {
-  int i;
+  unsigned int i;
   for (i = 0; i < GENLEX_NUM_KEYWORDS; i++) {
-    if (strncmp((const char*)lexer->buf, gen_lexer_keywords[i].keyword, lexer->blen) == 0) {
+    lexer->buf[lexer->blen] = '\0';
+    if (strcmp((const char*)lexer->buf, gen_lexer_keywords[i].keyword) == 0) {
       return gen_lexer_keywords[i].token;
     }
   }
@@ -700,7 +701,7 @@ static int gen_lexer_next_token(struct gen_lexer *lexer)
 
 #if defined(GENLEX_COMMENT_PAIRS)
   {
-    int i;
+    unsigned int i;
     for (i=0; i < GENLEX_NUM_COMMENT_PAIRS; i++) {
       int next;
       if (ch != gen_lexer_comments[i].beg[0]) { continue; }
@@ -734,8 +735,9 @@ static int gen_lexer_next_token(struct gen_lexer *lexer)
    */
 #if defined(GENLEX_LITERAL_PAIRS)
   {
-    int i, c2;
-    c2 = GENLEX_GETC(lexer->ctx);
+    unsigned int i;
+    int c2;
+    c2 = genlex_getc(lexer);
     if (c2 != EOF) {
       for (i=0; i < GENLEX_NUM_LITERAL_PAIRS; i++) {
         if ((gen_lexer_literal_pairs[i].pair[0] == ch) &&
@@ -745,7 +747,7 @@ static int gen_lexer_next_token(struct gen_lexer *lexer)
           return gen_lexer_literal_pairs[i].token;
         }
       }
-      GENLEX_UNGETC(c2, lexer->ctx);
+      genlex_ungetc(c2,lexer);
     }
   }
 #endif
