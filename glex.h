@@ -55,7 +55,7 @@
  *
  * GENLEX_IO_T
  *
- *      Type for IO context used in GenLex IO macros.  Defaults to void
+ *      Type for IO context used in GenLex IO macros.  Defaults to void *
  *      if not defined.
  *
  * ch = GENLEX_GETC(ctx)
@@ -140,7 +140,7 @@
  *
  *      Must return a non-zero number if the character is a whitespace
  *      character and zero otherwise.  If this macro is not defined,
- *      whitespace defaults to the usual set.
+ *      whitespace defaults to the set recognized by isspace(3).
  *
  * GENLEX_KEYWORD_TRIE          (NOT IMPLEMENTED)
  *
