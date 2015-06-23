@@ -102,6 +102,10 @@ DEFTEST( test_stdio )
 
 void run_tests_stdio(void)
 {
+  /* FIXME: test these! */
+  (void)gen_lexer_token_line;
+  (void)gen_lexer_token_col;
+  (void)gen_lexer_token_off;
   RUNTEST( test_stdio );
 }
 

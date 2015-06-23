@@ -403,6 +403,109 @@ DEFTEST( lexer_buffer_overflow_has_graceful_recovery )
   EXPECT( 0, gen_lexer_next_token(&lexer) );
 }
 
+#define EXPECT_TOKEN_AT( tok, line, col, off, lexer ) \
+  EXPECT( (tok) , gen_lexer_next_token((lexer)) ); \
+  EXPECT( (off) , gen_lexer_token_off((lexer))  ); \
+  EXPECT( (line), gen_lexer_token_line((lexer)) ); \
+  EXPECT( (col) , gen_lexer_token_col((lexer))  )
+
+DEFTEST( positions_are_correct )
+{
+  struct bytestream s = BYTESTREAM(
+      " 32 + 15 - \n"
+      " /* comment! */\n"
+      "   5 * (3 + 2);\n"
+      "foo(9);\n"
+      "foo  (23) /* comment! */ + bar(9);\n"
+      "x = \"bar\";\n");
+  struct gen_lexer lexer;
+
+  gen_lexer_initialize(&lexer, &s);
+
+  EXPECT_TOKEN_AT( GENLEX_INT_TOKEN, 0, 1, 1, &lexer );
+  EXPECT( 32, gen_lexer_token_int_value(&lexer) );
+
+  EXPECT_TOKEN_AT( '+', 0, 4, 4, &lexer );
+
+  EXPECT_TOKEN_AT( GENLEX_INT_TOKEN, 0, 6, 6, &lexer );
+  EXPECT( 15, gen_lexer_token_int_value(&lexer) );
+
+  EXPECT_TOKEN_AT( '-', 0, 9, 9, &lexer );
+
+  EXPECT_TOKEN_AT( GENLEX_COMMENT_TOKEN, 1, 1, 13, &lexer );
+
+  EXPECT_TOKEN_AT( GENLEX_INT_TOKEN, 2, 3, 31, &lexer );
+  EXPECT( '5', s.bytes[31] );  /* check that offset is correct */
+  EXPECT( 5, gen_lexer_token_int_value(&lexer) );
+
+  EXPECT_TOKEN_AT( '*', 2, 5, 33, &lexer );
+  EXPECT_TOKEN_AT( '(', 2, 7, 35, &lexer );
+
+  EXPECT_TOKEN_AT( GENLEX_INT_TOKEN, 2, 8, 36, &lexer );
+  EXPECT( 3, gen_lexer_token_int_value(&lexer) );
+
+  EXPECT_TOKEN_AT( '+', 2, 10, 38, &lexer );
+
+  EXPECT_TOKEN_AT( GENLEX_INT_TOKEN, 2, 12, 40, &lexer );
+  EXPECT( '2', s.bytes[40] );  /* check that offset is correct */
+  EXPECT( 2, gen_lexer_token_int_value(&lexer) );
+
+  EXPECT_TOKEN_AT( ')', 2, 13, 41, &lexer );
+  EXPECT_TOKEN_AT( ';', 2, 14, 42, &lexer );
+
+  EXPECT_TOKEN_AT( GENLEX_ID_TOKEN, 3, 0, 44, &lexer );
+  EXPECT_STR( "foo", gen_lexer_token_string(&lexer,NULL) );
+
+  EXPECT_TOKEN_AT( '(', 3, 3, 47, &lexer );
+
+  EXPECT_TOKEN_AT( GENLEX_INT_TOKEN, 3, 4, 48, &lexer );
+  EXPECT( 9, gen_lexer_token_int_value(&lexer) );
+
+  EXPECT_TOKEN_AT( ')', 3, 5, 49, &lexer );
+  EXPECT_TOKEN_AT( ';', 3, 6, 50, &lexer );
+
+  EXPECT_TOKEN_AT( GENLEX_ID_TOKEN, 4, 0, 52, &lexer );
+  EXPECT_STR( "foo", gen_lexer_token_string(&lexer,NULL) );
+
+  EXPECT_TOKEN_AT( '(', 4, 5, 57, &lexer );
+
+  EXPECT_TOKEN_AT( GENLEX_INT_TOKEN, 4, 6, 58, &lexer );
+  EXPECT( 23, gen_lexer_token_int_value(&lexer) );
+
+  EXPECT_TOKEN_AT( ')', 4, 8, 60, &lexer );
+
+  EXPECT_TOKEN_AT( GENLEX_COMMENT_TOKEN, 4, 10, 62, &lexer );
+
+  EXPECT_TOKEN_AT( '+', 4, 25, 77, &lexer );
+  EXPECT( '+', s.bytes[77] );  /* check that offset is correct */
+
+  EXPECT_TOKEN_AT( GENLEX_ID_TOKEN, 4, 27, 79, &lexer );
+  EXPECT_STR( "bar", gen_lexer_token_string(&lexer,NULL) );
+
+  EXPECT_TOKEN_AT( '(', 4, 30, 82, &lexer );
+
+  EXPECT_TOKEN_AT( GENLEX_INT_TOKEN, 4, 31, 83, &lexer );
+  EXPECT( 9, gen_lexer_token_int_value(&lexer) );
+  EXPECT( '9', s.bytes[83] );  /* check that offset is correct */
+
+  EXPECT_TOKEN_AT( ')', 4, 32, 84, &lexer );
+  EXPECT_TOKEN_AT( ';', 4, 33, 85, &lexer );
+
+  EXPECT_TOKEN_AT( GENLEX_ID_TOKEN, 5, 0, 87, &lexer );
+  EXPECT_STR( "x", gen_lexer_token_string(&lexer,NULL) );
+
+  EXPECT_TOKEN_AT( '=', 5, 2, 89, &lexer );
+
+  EXPECT_TOKEN_AT( GENLEX_STRING_TOKEN, 5, 4, 91, &lexer );
+  EXPECT( '"', s.bytes[91] );  /* check that offset is correct */
+  EXPECT_STR( "bar", gen_lexer_token_string(&lexer,NULL) );
+
+  EXPECT_TOKEN_AT( ';', 5, 9, 96, &lexer );
+  EXPECT( ';', s.bytes[96] );  /* check that offset is correct */
+
+  EXPECT( 0, gen_lexer_next_token(&lexer) );
+}
+
 void run_all_tests_noopts(void)
 {
   RUNTEST( bytestreamd_getc_and_ungetc );
@@ -423,6 +526,8 @@ void run_all_tests_noopts(void)
   RUNTEST( comments );
 
   RUNTEST( lexer_buffer_overflow_has_graceful_recovery );
+
+  RUNTEST( positions_are_correct );
 }
 
 

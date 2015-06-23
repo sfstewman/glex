@@ -129,6 +129,11 @@
  *
  * Optional configuration options:
  *
+ * GENLEX_CONFIG_ONLY_OFFSET    (not implemented)
+ *   
+ *   If set to 1, disables tracking the line and column for each token
+ *   returned, and only tracks the absolute offset.
+ *
  * GENLEX_COMMENT_PAIRS
  *
  *   A list of strings that delimit comments.  Examples are shown below.
@@ -279,6 +284,15 @@ struct gen_lexer {
   GENLEX_IO_T ctx;
   size_t blen;
   unsigned char buf[GENLEX_STRING_MAX];
+  unsigned int tok_line;
+  unsigned int tok_col;
+  unsigned int tok_off;
+
+  unsigned int off;
+  unsigned int line;
+  unsigned int col;
+  unsigned int prev_col;
+
   union {
     GENLEX_INT_T i;
 #if GENLEX_CONFIG_FLOATS
@@ -340,6 +354,8 @@ static int gen_lexer_initialize(struct gen_lexer *lexer, GENLEX_IO_T ctx);
  * occurred
  */
 static int gen_lexer_next_token(struct gen_lexer *lexer);
+static unsigned int gen_lexer_token_line(struct gen_lexer *lexer);
+static unsigned int gen_lexer_token_col(struct gen_lexer *lexer);
 
 static const unsigned char *gen_lexer_token_string(struct gen_lexer *lexer, size_t *lenp);
 static GENLEX_INT_T gen_lexer_token_int_value(struct gen_lexer *lexer);
@@ -351,11 +367,40 @@ static GENLEX_FLOAT_T gen_lexer_token_float_value(struct gen_lexer *lexer);
 
 /* Implementation */
 
+static inline int genlex_getc(struct gen_lexer *lexer)
+{
+  int c = GENLEX_GETC(lexer->ctx);
+#if !GENLEX_CONFIG_ONLY_OFFSET
+  lexer->prev_col = lexer->col;
+  if (c == '\n') {
+    lexer->line++;
+    lexer->col = 0;
+  } else {
+    lexer->col++;
+  }
+#endif
+  lexer->off++;
+
+  return c;
+}
+
+static inline void genlex_ungetc(int c, struct gen_lexer *lexer)
+{
+#if !GENLEX_CONFIG_ONLY_OFFSET
+  if (c == '\n') { lexer->line--; }
+  lexer->col = lexer->prev_col;
+#endif
+  if (lexer->off > 0) {
+    lexer->off--;
+    GENLEX_UNGETC(c, lexer->ctx);
+  }
+}
+
 static int genlex_skip_ws(struct gen_lexer *lexer)
 {
   int c;
 
-  while (c = GENLEX_GETC(lexer->ctx),
+  while (c = genlex_getc(lexer),
       (c != EOF) && GENLEX_IS_WHITESPACE(c)) {
     continue;
   }
@@ -392,7 +437,7 @@ static int gen_lexer_buf_add(struct gen_lexer *lexer, int ch)
 
 static int gen_lexer_next_char_escaped(struct gen_lexer *lexer)
 {
-  int c = GENLEX_GETC(lexer->ctx);
+  int c = genlex_getc(lexer);
 
   if (c == EOF) {
     return GENLEX_ERR_UNEXPECTED_EOF;
@@ -412,6 +457,23 @@ static int gen_lexer_next_char_escaped(struct gen_lexer *lexer)
   return c;
 }
 
+#if !GENLEX_CONFIG_ONLY_OFFSET
+static unsigned int gen_lexer_token_line(struct gen_lexer *lexer)
+{
+  return lexer->tok_line;
+}
+
+static unsigned int gen_lexer_token_col(struct gen_lexer *lexer)
+{
+  return lexer->tok_col;
+}
+#endif
+
+static unsigned int gen_lexer_token_off(struct gen_lexer *lexer)
+{
+  return lexer->tok_off;
+}
+
 static int gen_lexer_read_string(struct gen_lexer *lexer)
 {
   /* TODO: add optional three-quote string support */
@@ -419,7 +481,7 @@ static int gen_lexer_read_string(struct gen_lexer *lexer)
   int err = 0;
 
   for(;;) {
-    int c = GENLEX_GETC(lexer->ctx);
+    int c = genlex_getc(lexer);
 
     if (c == EOF) {
       if (!err) { err = GENLEX_ERR_UNEXPECTED_EOF; }
@@ -456,7 +518,7 @@ static int gen_lexer_read_char(struct gen_lexer *lexer)
 {
   int c;
 
-  c = GENLEX_GETC(lexer->ctx);
+  c = genlex_getc(lexer);
   if (c == '\\') {
     c = gen_lexer_next_char_escaped(lexer);
     if (c < 0) { return c; } /* error code */
@@ -466,7 +528,7 @@ static int gen_lexer_read_char(struct gen_lexer *lexer)
 
   lexer->tval.i = c;
 
-  c = GENLEX_GETC(lexer->ctx);
+  c = genlex_getc(lexer);
   if (c == EOF) {
     return GENLEX_ERR_UNEXPECTED_EOF;
   }
@@ -493,7 +555,7 @@ static int gen_lexer_read_num(struct gen_lexer *lexer, int c)
   do {
     GENLEXER_BUF_ADD(lexer,c);
 
-    c = GENLEX_GETC(lexer->ctx);
+    c = genlex_getc(lexer);
   } while (isnumber(c));
 
 #if GENLEX_CONFIG_FLOATS
@@ -502,7 +564,7 @@ static int gen_lexer_read_num(struct gen_lexer *lexer, int c)
     isfloat = 1;
     do {
       GENLEXER_BUF_ADD(lexer,c);
-      c = GENLEX_GETC(lexer->ctx);
+      c = genlex_getc(lexer);
     } while (isnumber(c));
   }
 
@@ -510,10 +572,10 @@ static int gen_lexer_read_num(struct gen_lexer *lexer, int c)
   if ((c == 'e') || (c=='E')) {
     isfloat = 1;
     GENLEXER_BUF_ADD(lexer,c);
-    c = GENLEX_GETC(lexer->ctx);
+    c = genlex_getc(lexer);
     if ((c == '-') || (c == '+')) {
       GENLEXER_BUF_ADD(lexer,c);
-      c = GENLEX_GETC(lexer->ctx);
+      c = genlex_getc(lexer);
     }
 
     if (!isnumber(c)) {
@@ -522,7 +584,7 @@ static int gen_lexer_read_num(struct gen_lexer *lexer, int c)
 
     do {
       GENLEXER_BUF_ADD(lexer,c);
-      c = GENLEX_GETC(lexer->ctx);
+      c = genlex_getc(lexer);
     } while (isnumber(c));
   }
 #endif
@@ -532,7 +594,7 @@ static int gen_lexer_read_num(struct gen_lexer *lexer, int c)
       return GENLEX_ERR_INVALID_CHAR;
     }
 
-    GENLEX_UNGETC(c,lexer->ctx);
+    genlex_ungetc(c,lexer);
   }
 
   errno = 0;
@@ -639,11 +701,11 @@ static int gen_lexer_read_symbol(struct gen_lexer *lexer, int c)
       }
     }
 
-    c = GENLEX_GETC(lexer->ctx);
+    c = genlex_getc(lexer);
   } while (GENLEX_IS_SYMBOL(c, lexer->blen));
 
   if (c != EOF) {
-    GENLEX_UNGETC(c, lexer->ctx);
+    genlex_ungetc(c,lexer);
   }
 
   if (tok != 0) {
@@ -663,7 +725,7 @@ static int gen_lexer_read_comment(struct gen_lexer *lexer, const unsigned char e
 
   for(;;) {
     int c, next;
-    c = GENLEX_GETC(lexer->ctx);
+    c = genlex_getc(lexer);
 
     if (c == EOF) {
       return GENLEX_ERR_UNEXPECTED_EOF;
@@ -678,7 +740,7 @@ static int gen_lexer_read_comment(struct gen_lexer *lexer, const unsigned char e
       return GENLEX_COMMENT_TOKEN;
     }
 
-    next = GENLEX_GETC(lexer->ctx);
+    next = genlex_getc(lexer);
     if (next == end[1]) {
       return GENLEX_COMMENT_TOKEN;
     }
@@ -708,6 +770,12 @@ restart:
 
   if (ch == EOF) { return 0; }
 
+  lexer->tok_off = lexer->off-1;
+#if !GENLEX_CONFIG_ONLY_OFFSET
+  lexer->tok_line = lexer->line;
+  lexer->tok_col = lexer->col-1;
+#endif
+
 #if defined(GENLEX_COMMENT_PAIRS)
   {
     unsigned int i;
@@ -719,9 +787,9 @@ restart:
         GENLEX_CONSUME_COMMENT(lexer,gen_lexer_comments[i].end);
       }
 
-      next = GENLEX_GETC(lexer->ctx);
+      next = genlex_getc(lexer);
       if (next != gen_lexer_comments[i].beg[1]) {
-        GENLEX_UNGETC(next,lexer->ctx);
+        genlex_ungetc(next,lexer);
         continue;
       }
 

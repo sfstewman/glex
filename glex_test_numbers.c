@@ -126,6 +126,11 @@ DEFTEST( returns_floats_and_ints )
 
 void run_tests_numbers(void)
 {
+  /* FIXME: test these! */
+  (void)gen_lexer_token_line;
+  (void)gen_lexer_token_col;
+  (void)gen_lexer_token_off;
+
   RUNTEST( returns_incomplete_int );
   RUNTEST( returns_int );
   RUNTEST( returns_floats_and_ints );
