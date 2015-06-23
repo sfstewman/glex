@@ -195,6 +195,7 @@
  *
  */
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -686,14 +687,22 @@ static int gen_lexer_read_comment(struct gen_lexer *lexer, const unsigned char e
     GENLEXER_BUF_ADD(lexer,next);
   }
 }
+#elif !defined(GENLEX_COMMENT_TOKEN)
+#  define GENLEX_COMMENT_TOKEN  0
 #endif
 
+#define GENLEX_CONSUME_COMMENT(lx,end) do {      \
+    int tok = gen_lexer_read_comment(lexer,end); \
+    if (GENLEX_COMMENT_TOKEN) { return tok; }    \
+    goto restart;                                \
+  } while (0)
 
 static int gen_lexer_next_token(struct gen_lexer *lexer)
 {
   int ch;
   const unsigned char *lit;
 
+restart:
   lexer->blen = 0;
   ch = genlex_skip_ws(lexer);
 
@@ -707,7 +716,7 @@ static int gen_lexer_next_token(struct gen_lexer *lexer)
       if (ch != gen_lexer_comments[i].beg[0]) { continue; }
 
       if (!gen_lexer_comments[i].beg[1]) {
-        return gen_lexer_read_comment(lexer, gen_lexer_comments[i].end);
+        GENLEX_CONSUME_COMMENT(lexer,gen_lexer_comments[i].end);
       }
 
       next = GENLEX_GETC(lexer->ctx);
@@ -716,9 +725,11 @@ static int gen_lexer_next_token(struct gen_lexer *lexer)
         continue;
       }
 
-      return gen_lexer_read_comment(lexer, gen_lexer_comments[i].end);
+      GENLEX_CONSUME_COMMENT(lexer,gen_lexer_comments[i].end);
     }
   }
+#else
+  if (0) { goto restart; } /* eliminate warnings */
 #endif
 
   if (ch == '"') {
